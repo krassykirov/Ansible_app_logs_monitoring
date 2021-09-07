@@ -1,0 +1,128 @@
+---
+- name: main
+  hosts: all
+  become: true
+  vars:
+    username: app
+    groupname: devops
+    disk_space_threshold: 0.2  # check if avaialble disk space is less than 20%
+    files_older_than: 1440  # default in minutes
+    # usage example: ansible-playbook main.yml -i inventory -e '{"files_older_than":"1d","disk_space_threshold":0.2}'
+    # we can add additonal tasks to check if user uid and group gid exist with getent avoid fail while already exists if necessary
+  tasks:
+      - name: set mount var for /
+        set_fact: 
+           mount: "{{ ansible_mounts | first }}"  
+   
+      - name: Create group 
+        group:
+          name: "{{ groupname }}"
+          state: present
+          gid: 1984
+
+      - name: Create user account
+        user:
+          name: "{{ username }}"
+          password: "{{ 'krassy' | password_hash('sha512') }}"
+          state: present
+          uid: 1099
+          groups: "{{ groupname }}"
+          append: yes
+          shell: /bin/bash  # for test purposes
+          update_password: always # always 
+
+      - name: Create app directory  
+        file:
+          path: "/var/log/app"
+          state: directory
+          owner: root # "{{ groupname }}" 
+          group: "{{ groupname }}" 
+          mode:  0774 
+          recurse: yes
+        register: dir_output
+      - debug: var=dir_output  
+
+      - name: Show if free space reach treshold of {{ disk_space_threshold }}
+        debug: 
+          msg: "{{ mount.size_available < mount.size_total|float * disk_space_threshold }}"  # shell : df / | tail -1 | sed 's/%//g' | awk '{print $5}' 
+        register: free_space_or_not  
+    
+      - name: Check log directory disk space usage
+        shell: du /var/log/app -s | cut -f1
+        register: app_log_space
+      - debug:
+          var: app_log_space.stdout_lines
+
+      - name: Copy disk_space_monitor.sh script file to remote hosts
+        ansible.builtin.copy:
+          src: "disk_space_monitor.sh"
+          dest: "/usr/local/bin"
+          owner: "{{ username }}"
+          group: "{{ groupname }}" 
+          mode: '0755'
+        register: copy_disk_space_monitor
+      - debug:
+          var: copy_disk_space_monitor
+
+      - name: Copy remediation script to remote hosts
+        ansible.builtin.copy:
+          src: "remediation.sh"
+          dest: "/usr/local/bin"
+          owner: "{{ username }}"
+          group: "{{ groupname }}" 
+          mode: '0755'
+        register: remediation_script
+      - debug:
+          var: copy_remediation
+
+      - name: Creates a cron job for disk space script
+        ansible.builtin.cron:
+          name: "set monitor disk space script to run every 5 minute"
+          minute: "*/5"
+          user: root # "{{ username }}" 
+          job: "/usr/local/bin/disk_space_monitor.sh" 
+          state: present
+        register: disk_space_monitor_cron_job
+      - debug:
+          var: disk_space_monitor_cron_job
+
+      - name: Creates a cron job for remediation script
+        ansible.builtin.cron:
+          name: "set remediation script to run every 1 minute"
+          minute: "*/1"
+          user: root # "{{ username }}" 
+          job: "/usr/local/bin/remediation.sh" 
+          state: present
+        register: remediation_cron_job
+      - debug:
+          var: remediation_cron_job
+      
+  #     - name: Delete old log files if not enough space  
+  #       debug: 
+  #           msg: "{{ free_space_or_not.msg }}"
+  #       changed_when:  free_space_or_not.msg == true
+  #       notify: Delete old log files 
+
+  # handlers: 
+  #     - name: Delete old log files
+  #       shell: find /var/log/app -type f -name "*.log" -mmin {{ files_older_than }} -delete 
+  #       register: res
+  #     - debug: var=res
+      
+    # - name: Delete old log files
+    #   find:
+    #       paths: /app/logs
+    #       file_type: file
+    #       #age: 1h
+    #       #size: 50m
+    #       pattern: "*" #patterns: '^[a-z]*_[0-9]{8}\.log$'
+    #       recurse: yes
+    #   register: files_to_delete
+
+    # - name: Delete the files matching
+    #   file:
+    #       path: "{{ item.path }}"
+    #       state: absent
+    #   with_items: "{{ files_to_delete.files }}"
+
+ 
