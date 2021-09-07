@@ -1,5 +1,3 @@
-# BeDe_tasks
-
 # Solution
 
 1. Ansible main.yml file contains first run where we create an User, Group and Directory required for the App
