@@ -7,7 +7,4 @@
 - The scripts will be copied to the remote hosts /usr/local/bin folder 
    and configured to run with cron jobs 
   
-- Simple usage will be: 
- $ ansible-playbook main.yml 
- $ ansible-playbook main.yml -i inventory -e '{"files_older_than":"1d","disk_space_threshold":0.2}'
 	  
