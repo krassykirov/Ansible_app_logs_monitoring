@@ -73,7 +73,7 @@
           mode: '0755'
         register: remediation_script
       - debug:
-          var: copy_remediation
+          var: remediation_script
 
       - name: Creates a cron job for disk space script
         ansible.builtin.cron:
